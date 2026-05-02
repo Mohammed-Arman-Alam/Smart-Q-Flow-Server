@@ -3,7 +3,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -24,12 +24,44 @@ async function run() {
   try {
     const db = client.db('SmartQFlow');
     const appointmentCollection = db.collection('appointment');
+    const doctorsCollection = db.collection('doctors'); 
 
     app.post('/appointment', async(req,res)=>{
         const appintment = req.body;
         const result = await appointmentCollection.insertOne(appintment);
         res.send(result);
     })
+    app.get('/appointment/:ticket', async(req,res)=>{
+        const appointment = await appointmentCollection.findOne({
+            ticketNumber: req.params.ticket
+        });
+        res.send(appointment)
+    })
+    app.get('/doctors/:department', async(req, res)=>{
+        const dept = req.params.department;
+        const doctor = await doctorsCollection.find({department: req.params.department}).toArray();
+        res.send(doctor);
+    })
+    app.patch('/assign/:id', async(req, res)=>{
+        const id = req.params.id;
+        const docId = req.body.doctorId;
+        const query = { _id: new ObjectId(id)};
+        const updatedDoc = {
+            $set:
+            {
+                status: 'assigned',
+                Assigned_Doctor : docId,
+            }
+        }
+        try{
+            const result = await appointmentCollection.updateOne(query,updatedDoc);
+            res.send(result);
+        }catch(error){
+            console.log(error)
+        }
+
+    })
+
 
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
