@@ -178,6 +178,4 @@ run().catch(console.dir);
 app.get('/', (req, res) => {
   res.send('Smart-Q-Flow Backend is running')
 })
-app.listen(port, ()=>{
-    console.log(`Server is running at ${port}`)
-})
+module.exports = app;
