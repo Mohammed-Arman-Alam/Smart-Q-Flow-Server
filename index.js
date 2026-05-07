@@ -22,50 +22,152 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+    await client.connect();
     const db = client.db('SmartQFlow');
     const appointmentCollection = db.collection('appointment');
     const doctorsCollection = db.collection('doctors'); 
+    const roomsCollection = db.collection('rooms');
 
-    app.post('/appointment', async(req,res)=>{
-        const appintment = req.body;
-        const result = await appointmentCollection.insertOne(appintment);
+    app.post('/appointment', async (req, res) => {
+      const appointment = {
+        ...req.body,
+        status: "waiting",
+        createdAt: new Date()
+      };
+      const result = await appointmentCollection.insertOne(appointment);
+      res.send(result);
+    });
+    app.get("/appointments", async (req, res) => {
+      try {
+        const result = await appointmentCollection.find({}).toArray();
         res.send(result);
-    })
+      } catch (error) {
+        console.log(error);
+        res.status(500).send({ error: "Failed to fetch appointments" });
+      }
+    });
+    app.get('/rooms', async (req, res) => {
+      const result = await roomsCollection.find({}).toArray();
+      res.send(result);
+    });
     app.get('/appointment/:ticket', async(req,res)=>{
         const appointment = await appointmentCollection.findOne({
             ticketNumber: req.params.ticket
         });
         res.send(appointment)
     })
+    app.get('/appointments/:dept', async(req,res)=>{
+        const appointment = await appointmentCollection.find({department: req.params.dept, status: "paid" }).toArray();
+        res.send(appointment);
+    })
     app.get('/doctors/:department', async(req, res)=>{
         const dept = req.params.department;
         const doctor = await doctorsCollection.find({department: req.params.department}).toArray();
         res.send(doctor);
     })
-    app.patch('/assign/:id', async(req, res)=>{
-        const id = req.params.id;
-        const docId = req.body.doctorId;
-        const query = { _id: new ObjectId(id)};
-        const updatedDoc = {
-            $set:
-            {
-                status: 'assigned',
-                Assigned_Doctor : docId,
-            }
-        }
-        try{
-            const result = await appointmentCollection.updateOne(query,updatedDoc);
-            res.send(result);
-        }catch(error){
-            console.log(error)
-        }
-
+    app.get('/rooms/:dept', async(req,res)=>{
+        const result = await roomsCollection.find({
+            department: req.params.dept
+        }).toArray();
+        res.send(result);
     })
+    app.patch('/appointments/assign/:patientId', async(req, res)=>{
+        const { roomId, doctorId } = req.body;
+        const result = await appointmentCollection.updateOne(
+            {
+              _id: new ObjectId(req.params.patientId)
+            },
+            {
+              $set: {
+                assignedRoomId: roomId,
+                assignedDoctorId: doctorId,
+                status: "assigned"
+              }
+            }
+        )
+        res.send(result)
+    })
+    app.get("/appointments/room/:roomId", async(req,res)=>{
+      const result = await appointmentCollection
+        .find({
+          assignedRoomId: req.params.roomId,
+          status: {
+            $in: [
+              "assigned",
+              "in-progress"
+            ]
+          }
+        })
+        .sort({
+          createdAt: 1
+        })
+        .toArray()     
 
+      res.send(result)
+    })
+    app.patch("/appointments/call-next/:roomId", async (req, res) => {
+         const roomId = req.params.roomId;
 
-    // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
-    // Send a ping to confirm a successful connection
+         await appointmentCollection.updateMany(
+           {
+             assignedRoomId: roomId,
+             status: "in-progress"
+           },
+           {
+             $set: { status: "completed" }
+           }
+         );
+     
+         
+         const next = await appointmentCollection.findOne(
+           {
+             assignedRoomId: roomId,
+             status: "assigned"
+           },
+           {
+             sort: { createdAt: 1 }
+           }
+         );
+     
+         if (!next) {
+           return res.send({ message: "No patient" });
+         }
+     
+         
+         await appointmentCollection.updateOne(
+           { _id: next._id },
+           {
+             $set: { status: "in-progress" }
+           }
+         );
+     
+         res.send({ success: true });
+    });
+    app.patch("/appointments/complete/:id", async (req, res) => {
+        const result = await appointmentCollection.updateOne(
+          { _id: new ObjectId(req.params.id) },
+          {
+            $set: {
+              status: "completed"
+            }
+          }
+        );
+
+        res.send(result);
+    });
+    app.patch("/appointments/mark-ready/:id", async (req, res) => {
+      const result = await appointmentCollection.updateOne(
+        { _id: new ObjectId(req.params.id) },
+        {
+          $set: {
+            status: "paid"
+          }
+        }
+      );    
+
+      res.send(result);
+    });
+    
     await client.db("admin").command({ ping: 1 });
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
