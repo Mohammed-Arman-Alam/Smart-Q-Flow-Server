@@ -56,8 +56,17 @@ async function run() {
         });
         res.send(appointment)
     })
+    // app.get('/appointments/:dept', async(req,res)=>{
+    //     const appointment = await appointmentCollection.find({department: req.params.dept, status: "paid" }).toArray();
+    //     res.send(appointment);
+    // })
     app.get('/appointments/:dept', async(req,res)=>{
-        const appointment = await appointmentCollection.find({department: req.params.dept, status: "paid" }).toArray();
+        const appointment = await appointmentCollection.find({
+            department: req.params.dept,
+            status: "waiting"
+        }).sort({
+            createdAt: 1
+        }).toArray();   
         res.send(appointment);
     })
     app.get('/doctors/:department', async(req, res)=>{
@@ -71,22 +80,82 @@ async function run() {
         }).toArray();
         res.send(result);
     })
-    app.patch('/appointments/assign/:patientId', async(req, res)=>{
-        const { roomId, doctorId } = req.body;
-        const result = await appointmentCollection.updateOne(
+    // app.patch('/appointments/assign/:patientId', async(req, res)=>{
+    //     const { roomId, doctorId } = req.body;
+    //     const result = await appointmentCollection.updateOne(
+    //         {
+    //           _id: new ObjectId(req.params.patientId)
+    //         },
+    //         {
+    //           $set: {
+    //             assignedRoomId: roomId,
+    //             assignedDoctorId: doctorId,
+    //             status: "assigned"
+    //           }
+    //         }
+    //     )
+    //     res.send(result)
+    // })
+    app.patch('/appointments/auto-assign/:patientId', async (req, res) => {
+        const patientId = req.params.patientId;
+        const patient = await appointmentCollection.findOne({
+            _id: new ObjectId(patientId)
+        });
+      
+        if (!patient) {
+            return res.status(404).send({
+                message: "Patient not found"
+            });
+        }
+      
+
+        const rooms = await roomsCollection.find({
+            department: patient.department
+        }).toArray();
+      
+        if (rooms.length === 0) {
+            return res.status(404).send({
+                message: "No room available"
+            });
+        }
+      
+
+        let selectedRoom = null;
+        let minimumQueue = Infinity;
+      
+        for (const room of rooms) {
+        
+            const count = await appointmentCollection.countDocuments({
+                assignedRoomId: room._id.toString(),
+                status: {
+                    $in: ["assigned", "in-progress"]
+                }
+            });
+          
+            if (count < minimumQueue) {
+                minimumQueue = count;
+                selectedRoom = room;
+            }
+        }
+    
+    await appointmentCollection.updateOne(
             {
-              _id: new ObjectId(req.params.patientId)
+                _id: new ObjectId(patientId)
             },
             {
-              $set: {
-                assignedRoomId: roomId,
-                assignedDoctorId: doctorId,
-                status: "assigned"
-              }
+                $set: {
+                    assignedRoomId: selectedRoom._id.toString(),
+                    assignedDoctorId: selectedRoom.doctorId,
+                    status: "assigned"
+                }
             }
-        )
-        res.send(result)
-    })
+        );    
+
+        res.send({
+            success: true,
+            room: selectedRoom
+        });
+    });
     app.get("/appointments/room/:roomId", async(req,res)=>{
       const result = await appointmentCollection
         .find({
