@@ -80,22 +80,7 @@ async function run() {
         }).toArray();
         res.send(result);
     })
-    // app.patch('/appointments/assign/:patientId', async(req, res)=>{
-    //     const { roomId, doctorId } = req.body;
-    //     const result = await appointmentCollection.updateOne(
-    //         {
-    //           _id: new ObjectId(req.params.patientId)
-    //         },
-    //         {
-    //           $set: {
-    //             assignedRoomId: roomId,
-    //             assignedDoctorId: doctorId,
-    //             status: "assigned"
-    //           }
-    //         }
-    //     )
-    //     res.send(result)
-    // })
+  
     app.patch('/appointments/auto-assign/:patientId', async (req, res) => {
         const patientId = req.params.patientId;
         const patient = await appointmentCollection.findOne({
@@ -237,8 +222,6 @@ async function run() {
       res.send(result);
     });
     
-    // await client.db("admin").command({ ping: 1 });
-    // console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
   }
 }
